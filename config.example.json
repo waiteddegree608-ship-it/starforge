@@ -1,0 +1,26 @@
+{
+  "owner": "waiteddegree608-ship-it",
+  "incubator_repo": "starforge",
+  "opencode_executable": "opencode",
+  "state_dir": "./state",
+  "secrets_dir": "./secrets",
+  "daily_budget_cny": 20,
+  "max_requests_per_cycle": 24,
+  "max_publications_per_day": 1,
+  "interval_hours": 6,
+  "pricing": {
+    "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+    "checked_on": "2026-10-10",
+    "valid_until": "2026-10-17",
+    "input_usd_per_million": 0.3,
+    "output_usd_per_million": 1.2,
+    "cny_per_usd_ceiling": 8.0,
+    "safety_multiplier": 1.25
+  },
+  "signal_queries": [
+    "is:issue is:open label:enhancement markdown export comments:>1",
+    "is:issue is:open citation offline comments:>1",
+    "is:issue is:open reproducibility json cli comments:>1"
+  ],
+  "auto_publish": true
+}
