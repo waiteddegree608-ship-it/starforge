@@ -8,7 +8,7 @@ The controller is Python standard library code. OpenCode is a separate executabl
 
 ## The loop
 
-1. Collect up to 36 public issue signals from three configured searches. No model call is needed for collection.
+1. Collect up to 24 public issue signals from three configured searches. No model call is needed for collection.
 2. Require two real demand references before a candidate can proceed. The model may choose to do nothing.
 3. Build one small, dependency-free Python CLI, behavior tests, and English/Chinese READMEs.
 4. Apply static file and credential checks, then ask for a separate model review. This review is not independent human verification.

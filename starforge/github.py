@@ -32,9 +32,9 @@ class GitHub:
     def signals(self,queries):
         rows={}
         for q in queries[:3]:
-            data=self.api('/search/issues?q='+urllib.parse.quote(q)+'&sort=updated&order=desc&per_page=12')
+            data=self.api('/search/issues?q='+urllib.parse.quote(q)+'&sort=updated&order=desc&per_page=8')
             for x in data.get('items',[]):
-                rows[x['html_url']]={'url':x['html_url'],'title':x['title'][:180],'body':(x.get('body') or '')[:2200],
+                rows[x['html_url']]={'url':x['html_url'],'title':x['title'][:180],'body':(x.get('body') or '')[:1000],
                     'comments':x['comments'],'reactions':x.get('reactions',{}).get('total_count',0),'updated_at':x['updated_at']}
         return list(rows.values())
 

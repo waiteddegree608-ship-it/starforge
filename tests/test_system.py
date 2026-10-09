@@ -1,16 +1,18 @@
 import json
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 import urllib.request
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 
 from starforge.budget import Budget
 from starforge.gateway import Gateway
 from starforge.gates import inspect
 from starforge.worker import parse_object
-from starforge.controller import single_runner
+from starforge.controller import single_runner, Controller
 
 PRICES={'valid_until':'2099-01-01','input_usd_per_million':.3,
         'output_usd_per_million':1.2,'cny_per_usd_ceiling':8,'safety_multiplier':1.25}
@@ -74,6 +76,14 @@ class BudgetTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 with single_runner(path):pass
 
+    def test_concurrent_reservations_cannot_overspend(self):
+        def attempt(_):
+            try:self.budget.reserve(1);return True
+            except ValueError:return False
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            self.assertEqual(sum(pool.map(attempt,range(24))),20)
+        self.assertEqual(self.budget.status()['conservative_cost_cny'],20)
+
 
 class GateTests(unittest.TestCase):
     def setUp(self):
@@ -109,7 +119,47 @@ class GateTests(unittest.TestCase):
 
     def test_model_json_contract(self):
         self.assertEqual(parse_object('```json\n{"ready": false}\n```'),{'ready':False})
+        self.assertEqual(parse_object('I reviewed the signals.\n```json\n{"ready": false}\n```'),{'ready':False})
+        self.assertEqual(parse_object('Review complete. {"approved":false,"issues":["wrong output"]}'),{'approved':False,'issues':['wrong output']})
+        self.assertEqual(parse_object('Example:\n```\nsome code\n```\nDecision: {"approved":false}'),{'approved':False})
+        with self.assertRaises(ValueError):parse_object('{"ready": true} trailing incomplete answer')
         with self.assertRaises(ValueError):parse_object('not JSON')
+
+    def controller(self,conclusion):
+        c=Controller.__new__(Controller)
+        c.state=self.root/'state';c.state.mkdir()
+        c.cfg={'owner':'test-owner','incubator_repo':'test-incubator','auto_publish':True}
+        files=inspect(self.root) if not (self.root/'state/state.json').exists() else {}
+        c.db={'cycles':[],'publications':[],'pending':{'name':'sf-test-tool','description':'test fixture',
+             'project':str(self.root),'sha':'candidate-sha','branch':'candidate/test','created_at':99999999999,
+             'evidence':['https://github.com/example/a/issues/1','https://github.com/example/b/issues/2'],
+             'hashes':{k:hashlib.sha256(v.encode()).hexdigest() for k,v in files.items()}}}
+        from unittest.mock import Mock
+        c.gh=Mock()
+        c.gh.runs.return_value=[{'name':'Prototype checks','head_branch':'candidate/test','status':'completed',
+                                'conclusion':conclusion,'html_url':'https://github.com/example/actions/runs/1'}]
+        c.gh.ensure_repo.return_value={'html_url':'https://github.com/test-owner/sf-test-tool'}
+        c.gh.push.return_value='published-sha'
+        c.gh.api.return_value=[]
+        return c
+
+    def test_failed_ci_does_not_publish(self):
+        c=self.controller('failure');c.poll()
+        c.gh.ensure_repo.assert_not_called();c.gh.push.assert_not_called()
+        self.assertEqual(c.db['cycles'][-1]['status'],'candidate_failed_ci')
+
+    def test_modified_candidate_does_not_publish(self):
+        c=self.controller('success')
+        (self.root/'cli.py').write_text('print("modified after CI")')
+        with self.assertRaises(ValueError):c.poll()
+        c.gh.ensure_repo.assert_not_called()
+
+    def test_successful_ci_promotes_exact_candidate(self):
+        c=self.controller('success');c.poll()
+        c.gh.ensure_repo.assert_called_once()
+        c.gh.push.assert_called_once()
+        self.assertEqual(c.db['publications'][0]['sha'],'published-sha')
+        self.assertIsNone(c.db['pending'])
 
 
 if __name__=='__main__':unittest.main()
