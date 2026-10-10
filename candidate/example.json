@@ -1,0 +1,10 @@
+{
+  "note": "Example project fragment for sf-md-ref-inventory. You can point the CLI at this directory or at individual files.",
+  "files": {
+    "intro.md": "# Introduction {#sec-intro}\n\nSee @fig-arch and the earlier work [@smith2020].\nJump to [the method](#sec-method).\n\n## Method {#sec-method}\n\n```python\n# @not-a-citation\n```\n",
+    "figures.md": "::: {#fig-arch}\nArchitecture placeholder.\n:::\n\n# Duplicate heading {#sec-intro}\n\n![Caption](img.png){#fig-orphan}\n",
+    "notes.txt": "A broken reference [here](#nope) and a citation [@missing2024].\n"
+  },
+  "references.bib": "@article{smith2020,\n  title = {A Study},\n  author = {Smith, Jane},\n}\n\n@book{unused1999,\n  title = {Never Cited},\n}\n",
+  "suggested_invocation": "python cli.py --format text --check-bib --bib references.bib ."
+}
