@@ -1,0 +1,26 @@
+name: Prototype checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        python: ['3.10', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run behavior tests
+        working-directory: candidate
+        run: python -I -m unittest discover -s . -p test_cli.py -v
+      - name: Exercise public commands
+        working-directory: candidate
+        run: |
+          python -I cli.py --help
+          python -I cli.py --demo

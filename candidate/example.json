@@ -1,0 +1,19 @@
+{
+  "note": "Illustrative --json output shape for sf-md-footnote-check. Keys under 'files' are the input paths.",
+  "files": {
+    "demo/doc.md": {
+      "duplicates": ["alpha"],
+      "unreferenced": ["orphan"],
+      "undefined": ["ghost"],
+      "definition_count": 3,
+      "reference_count": 2
+    }
+  },
+  "summary": {
+    "duplicates": 1,
+    "unreferenced": 1,
+    "undefined": 1,
+    "definition_count": 3,
+    "reference_count": 2
+  }
+}
