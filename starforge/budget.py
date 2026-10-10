@@ -8,6 +8,10 @@ import uuid
 HK = timezone(timedelta(hours=8))
 
 
+class BudgetExhausted(ValueError):
+    """No upstream request was sent; resume after the accounting day changes."""
+
+
 def day():
     return datetime.now(HK).date().isoformat()
 
@@ -27,12 +31,12 @@ class Budget:
 
     def reserve(self, amount):
         if not 0 < amount <= self.limit:
-            raise ValueError('Request exceeds budget')
+            raise BudgetExhausted('Request exceeds budget')
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             used = db.execute('SELECT COALESCE(SUM(amount),0) FROM requests WHERE day=?',(day(),)).fetchone()[0]
             if used + amount > self.limit:
-                raise ValueError('Daily budget exhausted; no upstream request sent')
+                raise BudgetExhausted('Daily budget exhausted; no upstream request sent')
             key = uuid.uuid4().hex
             db.execute('INSERT INTO requests VALUES (?,?,?,?,?)',(key,day(),amount,'reserved','{}'))
             return key

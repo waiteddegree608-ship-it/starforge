@@ -11,11 +11,11 @@ The controller is Python standard library code. OpenCode is a separate executabl
 1. Collect up to 24 public issue signals from three configured searches. No model call is needed for collection.
 2. Require two real demand references before a candidate can proceed. The model may choose to do nothing.
 3. Build one small, dependency-free Python CLI, behavior tests, and English/Chinese READMEs.
-4. Apply static file and credential checks, then ask for a separate model review. This review is not independent human verification.
+4. Apply static file and credential checks, then ask for a separate model review and attempt up to two targeted repairs if rejected. This review is not independent human verification.
 5. Push an explicitly unreleased candidate branch to the incubator. GitHub runners execute tests and public CLI commands on Python 3.10 and 3.13.
 6. Promote only a passing candidate to an `sf-*` repository and a prerelease. Record its evidence, commit, and CI run.
 
-The default is one published prototype per Hong Kong calendar day and a new demand scan every six hours. Failed or rejected attempts remain recorded instead of being regenerated indefinitely. Existing repositories' stars, forks, and issue counts are sampled for later evaluation; the first version does **not** claim a learned prediction of star growth or automatically optimize from those metrics.
+The default is continuous work: each completed cycle starts the next without a time interval or daily publication-count limit. Work stops when the next paid request cannot be reserved within the Hong Kong day's ¥20 budget, then automatically resumes on the next accounting day. The controller still waits for external CI and honours explicit pauses. Demand searches advance through result pages instead of repeatedly paying to analyse the same first page. Failed or rejected attempts remain recorded. Existing repositories' stars, forks, and issue counts are sampled for later evaluation; this version does **not** claim a learned prediction of star growth or automatically optimize from those metrics.
 
 ## Run
 
@@ -33,7 +33,7 @@ python -m starforge --config config.local.json once
 python -m starforge --config config.local.json loop
 ```
 
-`probe` makes one small paid model request and tests the real OpenCode → loopback gateway → DeepSeek path. `once` discovers/builds a candidate or polls a pending CI result; call it again after CI completes. `loop` checks pending CI every minute and starts new discovery only when the interval allows.
+`probe` makes one small paid model request and tests the real OpenCode → loopback gateway → DeepSeek path. `once` discovers/builds a candidate or polls a pending CI result; call it again after CI completes. `loop` proceeds continuously while budget permits, polling every minute only when waiting for CI, new demand, a pause, or the next accounting day. `max_publications_per_day: 0` means no publication-count limit; `interval_hours` is retained for old config compatibility and does not throttle work.
 
 ```sh
 python -m starforge --config config.local.json status

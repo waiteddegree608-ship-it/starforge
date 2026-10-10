@@ -6,6 +6,7 @@ import secrets
 import threading
 import urllib.request
 import urllib.error
+from .budget import BudgetExhausted
 
 
 class Gateway:
@@ -15,6 +16,9 @@ class Gateway:
         self.limit, self.requests = request_limit, 0
         self.lock = threading.Lock()
         self.stopped = False
+        self.budget_blocked = False
+        self.cycle_blocked = False
+        self.json_output = False
 
     def complete(self, payload):
         if self.stopped or date.today().isoformat() > self.pricing['valid_until']:
@@ -23,6 +27,7 @@ class Gateway:
             raise ValueError('Only the configured Flash model is permitted')
         with self.lock:
             if self.requests >= self.limit:
+                self.cycle_blocked = True
                 raise ValueError('Cycle request limit reached')
             self.requests += 1
         # Enforce bounded context/output even if the agent requests larger limits.
@@ -34,13 +39,19 @@ class Gateway:
         if payload['max_tokens'] < 1:
             raise ValueError('Invalid output token limit')
         payload['thinking'] = {'type':'disabled'}
+        if self.json_output:
+            payload['response_format'] = {'type':'json_object'}
         raw = json.dumps(payload,ensure_ascii=False).encode('utf-8')
         if len(raw) > 180000:
             raise ValueError('Context budget exceeded')
         p=self.pricing
         def cost(i,o):return (i*p['input_usd_per_million']+o*p['output_usd_per_million'])/1e6*p['cny_per_usd_ceiling']*p['safety_multiplier']
         # Byte count plus overhead is intentionally much more conservative than token estimates.
-        reservation = self.budget.reserve(cost(len(raw)+16384,payload['max_tokens']))
+        try:
+            reservation = self.budget.reserve(cost(len(raw)+16384,payload['max_tokens']))
+        except BudgetExhausted:
+            self.budget_blocked = True
+            raise
         req=urllib.request.Request('https://api.deepseek.com/chat/completions',data=raw,
             headers={'Authorization':'Bearer '+self.key,'Content-Type':'application/json'})
         class NoRedirect(urllib.request.HTTPRedirectHandler):

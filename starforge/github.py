@@ -29,10 +29,10 @@ class GitHub:
         if r.returncode:raise RuntimeError('Git command failed: '+r.stderr.replace(self.token,'[redacted]').replace(auth,'[redacted]')[:1000])
         return r.stdout.strip()
 
-    def signals(self,queries):
+    def signals(self,queries,page=1):
         rows={}
         for q in queries[:3]:
-            data=self.api('/search/issues?q='+urllib.parse.quote(q)+'&sort=updated&order=desc&per_page=8')
+            data=self.api('/search/issues?q='+urllib.parse.quote(q)+'&sort=updated&order=desc&per_page=8&page='+str(page))
             for x in data.get('items',[]):
                 rows[x['html_url']]={'url':x['html_url'],'title':x['title'][:180],'body':(x.get('body') or '')[:1000],
                     'comments':x['comments'],'reactions':x.get('reactions',{}).get('total_count',0),'updated_at':x['updated_at']}

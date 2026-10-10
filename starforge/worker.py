@@ -4,9 +4,19 @@ import os
 import re
 from pathlib import Path
 import subprocess
+from .budget import BudgetExhausted
+
+
+class CycleLimitReached(RuntimeError):
+    pass
+
+
+class InvalidModelReply(ValueError):
+    pass
 
 
 def run_opencode(config, gateway, folder, prompt, phase, edit=False):
+    gateway.json_output=not edit
     folder=Path(folder).resolve()
     state=Path(config['state_dir'])/'opencode-profile'
     state.mkdir(parents=True,exist_ok=True)
@@ -32,6 +42,8 @@ def run_opencode(config, gateway, folder, prompt, phase, edit=False):
     log=Path(config['state_dir'])/'logs';log.mkdir(exist_ok=True)
     with open(log/(phase+'.jsonl'),'w',encoding='utf-8') as out, open(log/(phase+'.stderr'),'w',encoding='utf-8') as err:
         p=subprocess.run(command,cwd=folder,env=env,stdout=out,stderr=err,timeout=900)
+    if gateway.budget_blocked:raise BudgetExhausted('Daily request reservation declined')
+    if gateway.cycle_blocked:raise CycleLimitReached('Cycle request limit reached')
     if p.returncode or gateway.stopped:raise RuntimeError('OpenCode or provider failed; inspect local redacted logs')
     text=[]
     for line in (log/(phase+'.jsonl')).read_text(encoding='utf-8').splitlines():
@@ -61,6 +73,6 @@ def parse_object(text):
             except json.JSONDecodeError:continue
             if isinstance(candidate,dict) and not text[end:].strip():
                 obj=candidate;break
-        if obj is None:raise ValueError('No complete final JSON object')
-    if not isinstance(obj,dict):raise ValueError('Expected one JSON object')
+        if obj is None:raise InvalidModelReply('No complete final JSON object')
+    if not isinstance(obj,dict):raise InvalidModelReply('Expected one JSON object')
     return obj

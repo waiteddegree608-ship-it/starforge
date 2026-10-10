@@ -8,7 +8,7 @@ import urllib.request
 import urllib.error
 from concurrent.futures import ThreadPoolExecutor
 
-from starforge.budget import Budget
+from starforge.budget import Budget, BudgetExhausted, day
 from starforge.gateway import Gateway
 from starforge.gates import inspect
 from starforge.worker import parse_object
@@ -59,6 +59,36 @@ class BudgetTests(unittest.TestCase):
             with self.assertRaises(TimeoutError):gateway.complete({'model':'deepseek-flash','messages':[]})
         with self.assertRaises(ValueError):gateway.complete({'model':'deepseek-flash','messages':[]})
         self.assertEqual(self.budget.status()['unresolved_requests'],1)
+
+    def test_insufficient_budget_never_calls_provider(self):
+        self.budget.reserve(19.99)
+        gateway=Gateway('not-a-real-key',self.budget,PRICES)
+        with patch('urllib.request.OpenerDirector.open') as upstream:
+            with self.assertRaises(BudgetExhausted):gateway.complete({'model':'deepseek-flash','messages':[]})
+        upstream.assert_not_called()
+        self.assertTrue(gateway.budget_blocked)
+
+    def test_budget_wait_resumes_on_next_accounting_day(self):
+        from unittest.mock import Mock
+        c=Controller.__new__(Controller)
+        c.state=Path(self.temp.name)
+        c.cfg={'max_publications_per_day':0,'signal_queries':['test']}
+        c.db={'publications':[],'attempted':[],'cycles':[],'pending':None,'budget_wait_day':day()}
+        c.gh=Mock();c.gh.signals.return_value=[];c.metrics=Mock()
+        c.cycle();c.gh.signals.assert_not_called()
+        with patch('starforge.controller.day',return_value='2099-01-02'):c.cycle()
+        c.gh.signals.assert_called_once()
+
+    def test_completed_cycle_has_no_time_gate(self):
+        from unittest.mock import Mock
+        from datetime import datetime,timezone
+        c=Controller.__new__(Controller)
+        c.state=Path(self.temp.name)
+        c.cfg={'max_publications_per_day':0,'signal_queries':['test'],'interval_hours':999}
+        c.db={'publications':[],'attempted':[],'pending':None,
+              'cycles':[{'at':datetime.now(timezone.utc).isoformat(),'status':'no_candidate'}]}
+        c.gh=Mock();c.gh.signals.return_value=[];c.metrics=Mock()
+        c.cycle();c.gh.signals.assert_called_once()
 
     def test_gateway_auth_and_streamed_tool_calls(self):
         gateway=Gateway('not-a-real-key',self.budget,PRICES).start();self.addCleanup(gateway.close)

@@ -10,11 +10,11 @@ import shutil
 import sys
 import time
 
-from .budget import Budget, day
+from .budget import Budget, BudgetExhausted, day
 from .gateway import Gateway
 from .github import GitHub
 from .secrets import credential
-from .worker import run_opencode, parse_object
+from .worker import run_opencode, parse_object, InvalidModelReply, CycleLimitReached
 from .gates import inspect, workflow, ALLOWED
 
 
@@ -121,12 +121,14 @@ class Controller:
     def cycle(self,force=False):
         if (self.state/'PAUSE').exists():return
         if self.poll():return
-        if sum(x['day']==day() for x in self.db['publications'])>=self.cfg['max_publications_per_day']:return
-        if not force and self.db['cycles']:
-            last=datetime.fromisoformat(self.db['cycles'][-1]['at']).timestamp()
-            if time.time()-last<self.cfg['interval_hours']*3600:return
+        if self.db.get('budget_wait_day')==day():return
+        cap=self.cfg.get('max_publications_per_day',0)
+        if cap>0 and sum(x['day']==day() for x in self.db['publications'])>=cap:return
         self.metrics()
-        signals=self.gh.signals(self.cfg['signal_queries'])
+        page=self.db.get('signal_page',1)
+        signals=self.gh.signals(self.cfg['signal_queries'],page=page)
+        self.db['signal_page']=page+1 if page<100 else 1
+        self.persist()
         signals=[s for s in signals if s['url'] not in self.db['attempted']]
         save(self.state/'signals-latest.json',signals)
         if len(signals)<2:self.record('no_fresh_demand');return
@@ -151,6 +153,20 @@ class Controller:
             review_prompt='''Review cli.py, test_cli.py and READMEs against the intended behavior below. You cannot run code. Look for substantive logic errors, false promises, unsafe default file overwrites, fake tests, imported dependencies, missing realistic CLI input, and mismatch between tests and docs. Approve only a usable small offline prototype. Output ONLY JSON {"approved":true/false,"issues":[short specific issues]}. Specification:\n'''+json.dumps(idea,ensure_ascii=False)
             review=parse_object(run_opencode(self.cfg,gateway,project,review_prompt,cycle_id+'-review'))
             save(job/'review.json',review)
+            for repair in range(1,3):
+                if review.get('approved') is True:break
+                issues=review.get('issues',[])
+                if not isinstance(issues,list) or not issues:break
+                repair_prompt=('Fix the specific review findings in the existing candidate files. '
+                    'Write only the allowed five files. Do not run code. Add regression tests for substantive bugs, '
+                    'make README examples match output, and do not invent compatibility claims. '
+                    'Preserve the real use case. Findings:\n'+json.dumps(issues[:8],ensure_ascii=False)+
+                    '\nSpecification:\n'+json.dumps(idea,ensure_ascii=False))
+                run_opencode(self.cfg,gateway,project,repair_prompt,cycle_id+f'-repair-{repair}',edit=True)
+                files=inspect(project)
+                review=parse_object(run_opencode(self.cfg,gateway,project,review_prompt,cycle_id+f'-review-{repair}'))
+                save(job/f'review-{repair}.json',review)
+                save(job/'review.json',review)
             if review.get('approved') is not True:self.record('review_rejected',candidate=name,issues=review.get('issues',[])[:6]);return
         finally:gateway.close()
         # Public candidate branch is explicitly experimental; tests run on ephemeral GitHub runners.
@@ -191,12 +207,17 @@ def main():
             return
         if args.command=='once':
             try:controller.cycle(force=True)
+            except BudgetExhausted:
+                controller.db['budget_wait_day']=day()
+                controller.record('budget_wait',resume_on='next Hong Kong calendar day')
+            except (InvalidModelReply,CycleLimitReached) as error:
+                controller.record('cycle_rejected',error_type=type(error).__name__)
             except Exception as error:
                 controller.record('error',error_type=type(error).__name__)
                 save(state/'PAUSE',{'reason':'error','error_type':type(error).__name__})
                 raise
             return
-        print(json.dumps({'status':'running','pid':os.getpid(),'interval_hours':config['interval_hours']}),flush=True)
+        print(json.dumps({'status':'running','pid':os.getpid(),'mode':'continuous','daily_budget_cny':config['daily_budget_cny']}),flush=True)
         while True:
             try:
                 updated=json.loads(args.config.read_text(encoding='utf-8'))
@@ -206,8 +227,17 @@ def main():
                 controller.cfg=updated
                 controller.budget.limit=float(updated['daily_budget_cny'])
                 controller.cycle()
+            except BudgetExhausted:
+                controller.db['budget_wait_day']=day()
+                controller.record('budget_wait',resume_on='next Hong Kong calendar day')
+            except (InvalidModelReply,CycleLimitReached) as error:
+                controller.record('cycle_rejected',error_type=type(error).__name__)
             except Exception as error:
                 # Avoid credential-bearing exception bodies. Human-readable stage plus type only.
                 controller.record('error',error_type=type(error).__name__)
                 save(state/'PAUSE',{'reason':'error','error_type':type(error).__name__})
-            time.sleep(60)
+            # Only wait on external CI, a pause, an empty demand page, or the daily budget.
+            # Completed paid work flows directly into the next cycle.
+            last=controller.db['cycles'][-1]['status'] if controller.db['cycles'] else None
+            waiting=(state/'PAUSE').exists() or controller.db.get('budget_wait_day')==day() or controller.db['pending'] or last=='no_fresh_demand'
+            if waiting:time.sleep(60)

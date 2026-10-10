@@ -5,9 +5,9 @@
   "state_dir": "./state",
   "secrets_dir": "./secrets",
   "daily_budget_cny": 20,
-  "max_requests_per_cycle": 24,
-  "max_publications_per_day": 1,
-  "interval_hours": 6,
+  "max_requests_per_cycle": 48,
+  "max_publications_per_day": 0,
+  "interval_hours": 0,
   "pricing": {
     "source": "https://api-docs.deepseek.com/quick_start/pricing/",
     "checked_on": "2026-10-10",
