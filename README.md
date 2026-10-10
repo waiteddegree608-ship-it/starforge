@@ -67,3 +67,9 @@ Windows DPAPI support reads `.dpapi` files created with `ConvertFrom-SecureStrin
 [OpenCode CLI](https://opencode.ai/docs/cli/) · [Permissions](https://opencode.ai/docs/permissions/) · [DeepSeek API pricing](https://api-docs.deepseek.com/quick_start/pricing/)
 
 MIT for project-owned source. Third-party services and tools retain their own terms and licenses.
+
+## Local monitoring dashboard
+
+Run `powershell -File scripts/start-dashboard.ps1 -Config E:/APPdata/starforge/config.json`, then open http://127.0.0.1:8766.
+
+The read-only dashboard shows actual worker/agent PIDs, live phase inferred from phase logs, candidate files, AST-counted test definitions (not test results), demand references, review findings, CI/publication state, daily conservative spend, and repository metrics. Browser refreshes do not call any model. GitHub growth follows worker metrics; CI/release metadata is timestamped cached data. For a fresh GitHub snapshot, run `python scripts/refresh-dashboard-metrics.py --config E:/APPdata/starforge/config.json` with the repository root on PYTHONPATH. The service binds only to loopback and does not expose raw tool inputs, credentials, or filesystem browsing. It stays running until stopped or the computer restarts; the launcher avoids duplicates. No Codex automation is created.
